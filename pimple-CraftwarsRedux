@@ -1,4 +1,4 @@
---[[ Pimple v6.0 - CompKiller UI Version ]]
+--[[ Pimple v6.0 - pimpleHUB UI Version ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -15,20 +15,21 @@ local DISCORD_INVITE = "https://discord.gg/B3PurfCy"
 
 local NameSpoofEnabled, SpoofName, OriginalNames, NameSpoofConnection = false, "pimple", {}, nil
 local UIOpen = true
+local TargetBiomeSlider = nil
 
 local BiomeInfo = {
-    [0]="Spawn",[1]="Rex, ruler of the universe",[2]="Night",[3]="Mortus",[4]="Elemental War",
-    [5]="Zombie army",[6]="Pirate army",[7]="Underworld",[8]="Desert",[9]="Snow",
-    [10]="Apollyon (Chaos shard 8)",[11]="Void biome (eyes)",[12]="Olympus",
-    [13]="Aquantaneous (Chaos shard 3)",[14]="Lux and Chorus (Chaos shard 1)",
-    [15]="Flamma (Chaos shard 2)",[16]="Venenum (Chaos shard 7)",[17]="Vantalore and retrous",
-    [18]="Azurewrath (Chaos shard 5)",[19]="Sanctus (Chaos shard 6)",[20]="Tenebris",
-    [21]="Chaos",[22]="Dank Kid (Chaos shard 4)",[23]="Multavix (Chaos shard 9)",
-    [24]="Strange pressure",[25]="Jupiter",[26]="Verbosus",[27]="Zeranophonyx",
-    [28]="Azurewrath FP",[29]="Spectrum",[30]="Chronos and Kreto",[31]="Lazurix",
-    [32]="Inferno",[33]="Aqua and Ignis",[34]="Genesis",[35]="Origin Sanctus",
-    [36]="Midas (best cash grind)",[37]="Twins",[38]="Biome 38",[39]="Biome 39",[40]="Biome 40",
+    [0]="Spawn",[1]="Rex",[2]="Night",[3]="Mortus",[4]="Elemental War",
+    [5]="Zombie Army",[6]="Pirate Army",[7]="Underworld",[8]="Desert",[9]="Snow",
+    [10]="Apollyon",[11]="Void (Eyes)",[12]="Olympus",[13]="Aquantaneous",[14]="Lux & Chorus",
+    [15]="Flamma",[16]="Venenum",[17]="Vantalore",[18]="Azurewrath",[19]="Sanctus",[20]="Tenebris",
+    [21]="Chaos",[22]="Dank Kid",[23]="Multavix",[24]="Strange Pressure",[25]="Jupiter",
+    [26]="Verbosus",[27]="Zeranophonyx",[28]="Azurewrath FP",[29]="Spectrum",[30]="Chronos & Kreto",
+    [31]="Lazurix",[32]="Inferno",[33]="Aqua & Ignis",[34]="Genesis",[35]="Origin Sanctus",
+    [36]="Midas (Cash)",[37]="Twins",[38]="Dulled",[39]="Fortune",[40]="Infernal Abyss",
 }
+
+local BiomeList = {}
+for i=0,40 do table.insert(BiomeList, i.." - "..BiomeInfo[i]) end
 
 local BossNames = {
     "Rex","Mortus","Apollyon","Olympus","Aquantaneous","Lux","Chorus","Flamma","Venenum",
@@ -48,7 +49,7 @@ local Flags = {
     AutoSaveEnabled=true, AutoAbilities=false, AbilityQ=false, AbilityE=false, AbilityR=false,
     AbilityCooldown=0.5, NameSpoofEnabled=false, SpoofName="pimple",
     GodHealthInput="6m", GodHealthValue=6000000, KillHealthInput="inf", KillHealthValue=math.huge,
-    AutoGodSelf=false, AutoGodInterval=5, HighlightColor=Color3.fromRGB(220,60,60),
+    AutoGodSelf=false, AutoGodInterval=5,
 }
 
 local SaveableKeys = {
@@ -165,6 +166,13 @@ local function SummonBiome(i)
     local r = GetSummonBiomeRemote()
     if r and tonumber(i) then return pcall(function() r:FireServer(tonumber(i)) end) end
     return false
+end
+
+local function QuickTeleport(biomeNum)
+    Flags.TargetBiome = biomeNum
+    if TargetBiomeSlider then pcall(function() TargetBiomeSlider:Set(biomeNum) end) end
+    SummonBiome(biomeNum)
+    return biomeNum
 end
 
 local function SetupBiomeListeners()
@@ -540,30 +548,35 @@ local function ToggleAutoAbilities() Flags.AutoAbilities=not Flags.AutoAbilities
 
 LoadConfig()
 
-local Compkiller = loadstring(game:HttpGet("https://raw.githubusercontent.com/4lpaca-pin/CompKiller/refs/heads/main/src/source.luau"))()
-local Notifier = Compkiller.newNotify()
-local ConfigManager = Compkiller:ConfigManager({Directory="Pimple-UI",Config="Pimple-Configs"})
+local pimpleHUB = loadstring(game:HttpGet("https://raw.githubusercontent.com/4lpaca-pin/CompKiller/refs/heads/main/src/source.luau"))()
+local Notifier = pimpleHUB.newNotify()
+local ConfigManager = pimpleHUB:ConfigManager({Directory="pimpleHUB",Config="Pimple-Configs"})
 
-Compkiller.Colors.Highlight = Flags.HighlightColor
-Compkiller.Colors.Toggle = Color3.fromRGB(220,60,60)
+-- Set red theme colors (only highlight and toggle, not slider)
+pimpleHUB.Colors.Highlight = Color3.fromRGB(220,60,60)
+pimpleHUB.Colors.Toggle = Color3.fromRGB(220,60,60)
 
-Compkiller:Loader(AVATAR_ICON,2).yield()
+-- Loading screen
+pimpleHUB:Loader(AVATAR_ICON,2).yield()
 
-local Window = Compkiller.new({Name="PIMPLE v6.0 - Craftwars Redux",Keybind="LeftAlt",Logo=AVATAR_ICON,TextSize=18,Font=Enum.Font.GothamBold})
+local Window = pimpleHUB.new({Name="PIMPLE v6.0 - Craftwars Redux",Keybind="LeftAlt",Logo=AVATAR_ICON,TextSize=18,Font=Enum.Font.GothamBold})
 
 Window.OnToggle = function(visible) UIOpen = visible end
 
-Notifier.new({Title="Pimple Loaded",Content="Press Left Alt to toggle UI\nX = Auto Swing | T = Auto Abilities",Duration=5,Icon=AVATAR_ICON})
+Notifier.new({Title="pimpleHUB Loaded",Content="Press Left Alt to toggle UI\nX = Auto Swing | T = Auto Abilities",Duration=5,Icon=AVATAR_ICON})
 
+-- Watermark with live time
 local Watermark = Window:Watermark()
 Watermark:AddText({Icon="user",Text=LocalPlayer.DisplayName})
-Watermark:AddText({Icon="clock",Text=Compkiller:GetDate()})
+Watermark:AddText({Icon="clock",Text=pimpleHUB:GetDate()})
 local LiveTime = Watermark:AddText({Icon="timer",Text="TIME"})
-task.spawn(function() while true do task.wait(1) pcall(function() LiveTime:SetText(Compkiller:GetTimeNow()) end) end end)
+task.spawn(function() while true do task.wait(1) pcall(function() LiveTime:SetText(pimpleHUB:GetTimeNow()) end) end end)
 Watermark:AddText({Icon="server",Text="v6.0"})
 
+-- ==================== COMBAT TAB ====================
 Window:DrawCategory({Name="COMBAT"})
 local MainTab = Window:DrawTab({Name="Main",Icon="sword",EnableScrolling=true})
+
 local KillAuraSection = MainTab:DrawSection({Name="Kill Aura",Position="left"})
 
 local EnabledToggle = KillAuraSection:AddToggle({Name="Enabled",Flag="Enabled",Default=Flags.Enabled,Callback=function(v) Flags.Enabled=v end})
@@ -600,8 +613,10 @@ end})
 
 task.spawn(function() task.wait(0.1) UpdateWalkSpeed(Flags.WalkSpeed) UpdateJumpPower(Flags.JumpPower) end)
 
+-- ==================== ABILITIES TAB ====================
 Window:DrawCategory({Name="ABILITIES"})
 local AbilitiesTab = Window:DrawTab({Name="Abilities",Icon="target",EnableScrolling=true})
+
 local AbilitySection = AbilitiesTab:DrawSection({Name="Auto Abilities",Position="left"})
 
 AutoAbilitiesToggle = AbilitySection:AddToggle({Name="Auto Abilities",Flag="AutoAbilities",Default=Flags.AutoAbilities,Callback=function(v) Flags.AutoAbilities=v end})
@@ -620,19 +635,41 @@ local MeteorToggle = MeteorSection:AddToggle({Name="Auto Meteor",Flag="AutoMeteo
 MeteorToggle.Link:AddHelper({Text="Auto meteor nearest enemy"})
 MeteorSection:AddSlider({Name="Delay",Min=0,Max=1,Default=Flags.MeteorCooldown,Round=3,Flag="MeteorCooldown",Callback=function(v) Flags.MeteorCooldown=v end})
 
+-- ==================== BIOME TAB ====================
 Window:DrawCategory({Name="BIOME"})
 local BiomeTab = Window:DrawTab({Name="Biome",Icon="map",EnableScrolling=true})
+
 local BiomeSection = BiomeTab:DrawSection({Name="Biome Control",Position="left"})
 
 local BiomeLockToggle = BiomeSection:AddToggle({Name="Auto Lock",Flag="AutoBiomeLock",Default=Flags.AutoBiomeLock,Callback=function(v) Flags.AutoBiomeLock=v end})
 BiomeLockToggle.Link:AddHelper({Text="Stay in target biome"})
-BiomeSection:AddSlider({Name="Target Biome",Min=0,Max=TOTAL_BIOMES-1,Default=Flags.TargetBiome,Round=0,Flag="TargetBiome",Callback=function(v) Flags.TargetBiome=math.floor(v) end})
+
+TargetBiomeSlider = BiomeSection:AddSlider({Name="Target Biome",Min=0,Max=TOTAL_BIOMES-1,Default=Flags.TargetBiome,Round=0,Flag="TargetBiome",Callback=function(v) Flags.TargetBiome=math.floor(v) end})
+
 BiomeSection:AddSlider({Name="Check Interval",Min=0.5,Max=5,Default=Flags.BiomeCheckInterval,Round=1,Flag="BiomeCheckInterval",Callback=function(v) Flags.BiomeCheckInterval=v end})
 BiomeSection:AddButton({Name="Go To Biome",Callback=function()
     SummonBiome(Flags.TargetBiome)
     Notifier.new({Title="Teleport",Content="Going to: "..GetBiomeName(Flags.TargetBiome),Duration=3,Icon=AVATAR_ICON})
 end})
-BiomeSection:AddParagraph({Title="Popular",Content="36-Midas | 21-Chaos | 12-Olympus | 34-Genesis"})
+
+local QuickTPSection = BiomeTab:DrawSection({Name="Quick Teleport",Position="right"})
+QuickTPSection:AddDropdown({
+    Name="Select Biome",
+    Default="36 - Midas (Cash)",
+    Flag="QuickBiome",
+    Values=BiomeList,
+    Callback=function(v)
+        local num = tonumber(v:match("^(%d+)"))
+        if num then
+            QuickTeleport(num)
+            Notifier.new({Title="Teleport",Content="Going to: "..GetBiomeName(num),Duration=2,Icon=AVATAR_ICON})
+        end
+    end
+})
+QuickTPSection:AddButton({Name="Teleport Selected",Callback=function()
+    SummonBiome(Flags.TargetBiome)
+    Notifier.new({Title="Teleport",Content="Going to: "..GetBiomeName(Flags.TargetBiome),Duration=2,Icon=AVATAR_ICON})
+end})
 
 local CutsceneSection = BiomeTab:DrawSection({Name="Cutscenes",Position="right"})
 local CutsceneToggle = CutsceneSection:AddToggle({Name="Auto Skip",Flag="AutoSkipCutscene",Default=Flags.AutoSkipCutscene,Callback=function(v) Flags.AutoSkipCutscene=v end})
@@ -640,8 +677,10 @@ CutsceneToggle.Link:AddHelper({Text="Skip boss cutscenes"})
 CutsceneSection:AddSlider({Name="Check Speed",Min=0.3,Max=2,Default=Flags.CutsceneCheckInterval,Round=1,Flag="CutsceneCheckInterval",Callback=function(v) Flags.CutsceneCheckInterval=v end})
 CutsceneSection:AddButton({Name="Skip Now",Callback=SkipBossCutscene})
 
+-- ==================== MISC TAB ====================
 Window:DrawCategory({Name="MISC"})
 local MiscTab = Window:DrawTab({Name="Troll",Icon="skull",EnableScrolling=true})
+
 local GodSection = MiscTab:DrawSection({Name="God Mode",Position="left"})
 
 GodSection:AddTextBox({Name="Health",Placeholder="6m, 1b, inf...",Default=Flags.GodHealthInput,Callback=function(v) Flags.GodHealthInput=v Flags.GodHealthValue=ParseDamage(v) end})
@@ -652,8 +691,10 @@ end})
 GodSection:AddButton({Name="God All",Callback=function()
     Notifier.new({Title="God All",Content="Applied to "..GodAllPlayers(Flags.GodHealthValue).." players!",Duration=3,Icon=AVATAR_ICON})
 end})
+
 local AutoGodToggle = GodSection:AddToggle({Name="Auto God Self",Flag="AutoGodSelf",Default=Flags.AutoGodSelf,Callback=function(v) Flags.AutoGodSelf=v end})
 AutoGodToggle.Link:AddHelper({Text="Auto-apply god mode"})
+
 GodSection:AddSlider({Name="Interval",Min=1,Max=30,Default=Flags.AutoGodInterval,Round=0,Flag="AutoGodInterval",Callback=function(v) Flags.AutoGodInterval=v end})
 
 local KillSection = MiscTab:DrawSection({Name="Kill",Position="left"})
@@ -690,37 +731,51 @@ NameSpoofSection:AddButton({Name="Refresh",Callback=function()
     else Notifier.new({Title="Off",Content="Enable first!",Duration=3,Icon=AVATAR_ICON}) end
 end})
 
+-- ==================== SETTINGS TAB ====================
 Window:DrawCategory({Name="SETTINGS"})
 local SettingsTab = Window:DrawTab({Name="Settings",Icon="settings-3",EnableScrolling=true})
+
 local ConfigSection = SettingsTab:DrawSection({Name="Config",Position="left"})
 
 ConfigSection:AddToggle({Name="Auto Save",Flag="AutoSaveEnabled",Default=Flags.AutoSaveEnabled,Callback=function(v) Flags.AutoSaveEnabled=v end})
-ConfigSection:AddButton({Name="Save",Callback=function() if SaveConfig() then Notifier.new({Title="Saved",Content="Config saved!",Duration=3,Icon=AVATAR_ICON}) end end})
-ConfigSection:AddButton({Name="Load",Callback=function()
+ConfigSection:AddButton({Name="Save Config",Callback=function() if SaveConfig() then Notifier.new({Title="Saved",Content="Config saved!",Duration=3,Icon=AVATAR_ICON}) end end})
+ConfigSection:AddButton({Name="Load Config",Callback=function()
     if LoadConfig() then
         UpdateWalkSpeed(Flags.WalkSpeed) UpdateJumpPower(Flags.JumpPower)
         if Flags.NameSpoofEnabled then NameSpoofEnabled=true StartNameSpoof() end
         Notifier.new({Title="Loaded",Content="Config loaded!",Duration=3,Icon=AVATAR_ICON})
     end
 end})
-ConfigSection:AddParagraph({Title="Info",Content="Auto-saves every 30s\nFile: "..CONFIG_FILE})
+ConfigSection:AddParagraph({Title="Config Info",Content="Auto-saves every 30s\nFile: "..CONFIG_FILE})
 
-local UISection = SettingsTab:DrawSection({Name="UI",Position="right"})
-UISection:AddColorPicker({Name="Highlight",Default=Compkiller.Colors.Highlight,Flag="HighlightColor",Callback=function(v) Compkiller.Colors.Highlight=v Compkiller:RefreshCurrentColor() end})
-UISection:AddColorPicker({Name="Toggle",Default=Compkiller.Colors.Toggle,Callback=function(v) Compkiller.Colors.Toggle=v Compkiller:RefreshCurrentColor() end})
-UISection:AddToggle({Name="Always Show",Default=false,Callback=function(v) Window.AlwayShowTab=v end})
-UISection:AddDropdown({Name="Theme",Default="Default",Values={"Default","Dark Green","Dark Blue","Purple Rose","Skeet"},Callback=function(v) Compkiller:SetTheme(v) end})
+local UISection = SettingsTab:DrawSection({Name="UI Settings",Position="right"})
+
+UISection:AddToggle({Name="Always Show Frame",Default=false,Callback=function(v) Window.AlwayShowTab=v end})
+
+UISection:AddColorPicker({Name="Highlight",Default=pimpleHUB.Colors.Highlight,Flag="HighlightColor",Callback=function(v) pimpleHUB.Colors.Highlight=v pimpleHUB:RefreshCurrentColor() end})
+UISection:AddColorPicker({Name="Toggle Color",Default=pimpleHUB.Colors.Toggle,Callback=function(v) pimpleHUB.Colors.Toggle=v pimpleHUB:RefreshCurrentColor() end})
+UISection:AddColorPicker({Name="Mouse Enter",Default=pimpleHUB.Colors.MouseEnter,Callback=function(v) pimpleHUB.Colors.MouseEnter=v pimpleHUB:RefreshCurrentColor() end})
+UISection:AddColorPicker({Name="Block Color",Default=pimpleHUB.Colors.BlockColor,Callback=function(v) pimpleHUB.Colors.BlockColor=v pimpleHUB:RefreshCurrentColor() end})
+UISection:AddColorPicker({Name="Stroke Color",Default=pimpleHUB.Colors.StrokeColor,Callback=function(v) pimpleHUB.Colors.StrokeColor=v pimpleHUB:RefreshCurrentColor() end})
+
+UISection:AddButton({Name="Get Theme Code",Callback=function()
+    local theme = pimpleHUB:GetTheme()
+    pcall(function() setclipboard(theme) end)
+    Notifier.new({Title="Theme Copied",Content="Theme code copied to clipboard!",Duration=3,Icon=AVATAR_ICON})
+end})
 
 local InfoSection = SettingsTab:DrawSection({Name="Info",Position="right"})
-InfoSection:AddParagraph({Title="Pimple v6.0",Content="Craftwars Redux\n\nLeft Alt - UI\nX - Auto Swing\nT - Auto Abilities"})
-InfoSection:AddButton({Name="Discord",Callback=function() pcall(function() setclipboard(DISCORD_INVITE) end) Notifier.new({Title="Copied!",Content="Discord link copied!",Duration=3,Icon=AVATAR_ICON}) end})
+InfoSection:AddParagraph({Title="pimpleHUB v6.0",Content="Craftwars Redux Script\n\nKeybinds:\nLeft Alt - Toggle UI\nX - Toggle Auto Swing\nT - Toggle Auto Abilities"})
+InfoSection:AddButton({Name="Copy Discord",Callback=function() pcall(function() setclipboard(DISCORD_INVITE) end) Notifier.new({Title="Copied!",Content="Discord link copied!",Duration=3,Icon=AVATAR_ICON}) end})
 
+-- ==================== INPUT HANDLER ====================
 UserInputService.InputBegan:Connect(function(i,gp)
     if gp or IsTyping() then return end
     if i.KeyCode==Enum.KeyCode.X then ToggleAutoSwing()
     elseif i.KeyCode==Enum.KeyCode.T then ToggleAutoAbilities() end
 end)
 
+-- ==================== MAIN LOOP ====================
 RunService.RenderStepped:Connect(function(dt)
     CooldownTimer,BiomeCheckTimer,CutsceneCheckTimer = CooldownTimer+dt,BiomeCheckTimer+dt,CutsceneCheckTimer+dt
     MeteorTimer,SwingTimer,AbilityTimer,LastAutoSave,GodTimer = MeteorTimer+dt,SwingTimer+dt,AbilityTimer+dt,LastAutoSave+dt,GodTimer+dt
