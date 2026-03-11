@@ -1,0 +1,1353 @@
+--[[ Pimple v4.9 - CompKiller UI Version ]]
+
+local PlayersService = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = PlayersService.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+local CONFIG_FILE = "pimple_config.json"
+local CONFIG_VERSION = "4.9"
+local AutoSaveInterval = 30
+local LastAutoSave = 0
+local AVATAR_ICON = "rbxthumb://type=AvatarHeadShot&id=583572860&w=420&h=420"
+
+local BiomeInfo = {
+    [0] = "Spawn", [1] = "Rex, ruler of the universe", [2] = "Night", [3] = "Mortus",
+    [4] = "Elemental War", [5] = "Zombie army", [6] = "Pirate army", [7] = "Underworld",
+    [8] = "Desert", [9] = "Snow", [10] = "Apollyon (Chaos shard 8)", [11] = "Void biome (eyes)",
+    [12] = "Olympus", [13] = "Aquantaneous (Chaos shard 3)", [14] = "Lux and Chorus (Chaos shard 1)",
+    [15] = "Flamma (Chaos shard 2)", [16] = "Venenum (Chaos shard 7)", [17] = "Vantalore and retrous",
+    [18] = "Azurewrath (Chaos shard 5)", [19] = "Sanctus (Chaos shard 6)", [20] = "Tenebris",
+    [21] = "Chaos", [22] = "Dank Kid (Chaos shard 4)", [23] = "Multavix (Chaos shard 9)",
+    [24] = "Strange pressure", [25] = "Jupiter", [26] = "Verbosus", [27] = "Zeranophonyx",
+    [28] = "Azurewrath FP", [29] = "Spectrum", [30] = "Chronos and Kreto", [31] = "Lazurix",
+    [32] = "Inferno", [33] = "Aqua and Ignis", [34] = "Genesis", [35] = "Origin Sanctus",
+    [36] = "Midas (best cash grind)", [37] = "Twins", [38] = "Biome 38", [39] = "Biome 39", [40] = "Biome 40",
+}
+
+local BossNames = {
+    "Rex", "Mortus", "Apollyon", "Olympus", "Aquantaneous", "Lux", "Chorus", "Flamma",
+    "Venenum", "Vantalore", "Retrous", "Azurewrath", "Sanctus", "Tenebris", "Chaos",
+    "Dank Kid", "Multavix", "Jupiter", "Verbosus", "Zeranophonyx", "Spectrum",
+    "Chronos", "Kreto", "Lazurix", "Inferno", "Aqua", "Ignis", "Genesis", "Midas", "Twins",
+    "Origin", "ORIGIN", "Boss", "boss", "Impending", "Doom", "Twilight"
+}
+
+local SpecialBossKeywords = {
+    "impending", "doom", "twilight", "twins", "origin", "genesis", "chaos",
+    "apollyon", "multavix", "zeranophonyx", "lazurix", "inferno"
+}
+
+local Flags = {
+    Enabled = false, 
+    AutoSwing = false,
+    AutoEnemies = false, 
+    AutoMines = false, 
+    AttackCooldown = 0.5,
+    HitMode = "Damage", 
+    DamageValue = math.huge,
+    DamageInput = "inf",
+    MineTargets = { Mine = true, Mine2 = true, Mine3 = true },
+    AutoBiomeLock = false, 
+    TargetBiome = 0, 
+    BiomeCheckInterval = 1.0,
+    AutoSkipCutscene = false, 
+    CutsceneCheckInterval = 0.5,
+    AutoMeteor = false, 
+    MeteorCooldown = 0.01,
+    SwingCooldown = 0.1,
+    WalkSpeed = 16,
+    SwingKeybind = Enum.KeyCode.X,
+    AbilityKeybind = Enum.KeyCode.T,
+    AutoSaveEnabled = true,
+    AutoAbilities = false,
+    AbilityQ = false,
+    AbilityE = false,
+    AbilityR = false,
+    AbilityCooldown = 0.5,
+}
+
+local SaveableKeys = {
+    "Enabled", "AutoSwing", "AutoEnemies", "AutoMines", "AttackCooldown",
+    "HitMode", "DamageInput", "MineTargets", "AutoBiomeLock", "TargetBiome",
+    "BiomeCheckInterval", "AutoSkipCutscene", "CutsceneCheckInterval",
+    "AutoMeteor", "MeteorCooldown", "SwingCooldown", "WalkSpeed", "AutoSaveEnabled",
+    "AutoAbilities", "AbilityQ", "AbilityE", "AbilityR", "AbilityCooldown"
+}
+
+local MineOptions = { "Mine", "Mine2", "Mine3" }
+local TOTAL_BIOMES = 41
+local CooldownTimer, BiomeCheckTimer, CutsceneCheckTimer, MeteorTimer, SwingTimer, AbilityTimer = 0, 0, 0, 0, 0, 0
+local CachedWeapon, CachedArmour = nil, nil
+local LastWeaponCheck, LastArmourCheck = 0, 0
+local CACHE_DURATION = 0.5
+local IsInCutscene, BossDetected = false, false
+local SummonBiomeRemote, BossCutsceneRemote = nil, nil
+local AutoSwingToggle, AutoAbilitiesToggle = nil, nil
+
+local function CanUseFileSystem()
+    local success = pcall(function()
+        return writefile and readfile and isfile
+    end)
+    return success and writefile and readfile and isfile
+end
+
+local function SaveConfig()
+    if not CanUseFileSystem() then
+        warn("[pimple] File system not available - cannot save config")
+        return false
+    end
+    
+    local configData = {
+        version = CONFIG_VERSION,
+        timestamp = os.time(),
+        settings = {}
+    }
+    
+    for _, key in ipairs(SaveableKeys) do
+        local value = Flags[key]
+        if key == "DamageValue" then
+        elseif type(value) == "table" then
+            configData.settings[key] = value
+        elseif value ~= nil then
+            configData.settings[key] = value
+        end
+    end
+    
+    local success, err = pcall(function()
+        local jsonString = HttpService:JSONEncode(configData)
+        writefile(CONFIG_FILE, jsonString)
+    end)
+    
+    if success then
+        print("[pimple] Config saved successfully!")
+        return true
+    else
+        warn("[pimple] Failed to save config:", err)
+        return false
+    end
+end
+
+local function LoadConfig()
+    if not CanUseFileSystem() then
+        warn("[pimple] File system not available - using defaults")
+        return false
+    end
+    
+    if not isfile(CONFIG_FILE) then
+        print("[pimple] No config file found - using defaults")
+        return false
+    end
+    
+    local success, result = pcall(function()
+        local jsonString = readfile(CONFIG_FILE)
+        return HttpService:JSONDecode(jsonString)
+    end)
+    
+    if not success or not result then
+        warn("[pimple] Failed to load config:", result)
+        return false
+    end
+    
+    if result.version ~= CONFIG_VERSION then
+        print("[pimple] Config version mismatch - some settings may reset")
+    end
+    
+    local settings = result.settings or {}
+    for key, value in pairs(settings) do
+        if Flags[key] ~= nil then
+            if type(value) == type(Flags[key]) or (type(Flags[key]) == "number" and type(value) == "number") then
+                Flags[key] = value
+            end
+        end
+    end
+    
+    if Flags.DamageInput then
+        Flags.DamageValue = ParseDamage(Flags.DamageInput)
+    end
+    
+    print("[pimple] Config loaded successfully!")
+    print("[pimple] Last saved:", os.date("%Y-%m-%d %H:%M:%S", result.timestamp or 0))
+    return true
+end
+
+local function IsMouseOverGui()
+    local mousePos = UserInputService:GetMouseLocation()
+    local guisAtPosition = LocalPlayer.PlayerGui:GetGuiObjectsAtPosition(mousePos.X, mousePos.Y)
+    return #guisAtPosition > 0
+end
+
+local function IsTyping()
+    local focused = UserInputService:GetFocusedTextBox()
+    return focused ~= nil
+end
+
+local function IsSpecialBoss(model)
+    if not model or not model.Name then return false end
+    local modelNameLower = model.Name:lower()
+    for _, keyword in ipairs(SpecialBossKeywords) do
+        if string.find(modelNameLower, keyword) then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsEnemy(model)
+    if not model or not model:IsA("Model") then return false end
+    local isPlayer = PlayersService:GetPlayerFromCharacter(model) ~= nil
+    if isPlayer then return false end
+    local humanoid = model:FindFirstChild("Humanoid")
+    if not humanoid then return false end
+    local hasEnemyMain = model:FindFirstChild("EnemyMain") ~= nil
+    local hasBossMain = model:FindFirstChild("BossMain") ~= nil
+    local isSpecial = IsSpecialBoss(model)
+    return hasEnemyMain or hasBossMain or isSpecial
+end
+
+local function UpdateWalkSpeed(speed)
+    local character = LocalPlayer.Character
+    if character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.WalkSpeed = speed
+        end
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    if humanoid then
+        humanoid.WalkSpeed = Flags.WalkSpeed
+    end
+end)
+
+function ParseDamage(input)
+    if not input or input == "" then return math.huge end
+    local str = tostring(input):lower():gsub(",", ""):gsub(" ", "")
+    if str == "inf" or str == "infinite" or str == "max" then return math.huge end
+    local num, suffix = str:match("^([%d%.]+)([kmbt]?)$")
+    if num then
+        local value = tonumber(num)
+        if value then
+            if suffix == "k" then value = value * 1000
+            elseif suffix == "m" then value = value * 1000000
+            elseif suffix == "b" then value = value * 1000000000
+            elseif suffix == "t" then value = value * 1000000000000
+            end
+            return value
+        end
+    end
+    local direct = tonumber(str)
+    if direct then return direct end
+    return math.huge
+end
+
+local function GetSummonBiomeRemote()
+    if not SummonBiomeRemote then
+        SummonBiomeRemote = ReplicatedStorage:FindFirstChild("SummonBiome")
+        if not SummonBiomeRemote then
+            local success, remote = pcall(function() return ReplicatedStorage:WaitForChild("SummonBiome", 5) end)
+            if success and remote then SummonBiomeRemote = remote end
+        end
+    end
+    return SummonBiomeRemote
+end
+
+local function GetBossCutsceneRemote()
+    if not BossCutsceneRemote then
+        BossCutsceneRemote = ReplicatedStorage:FindFirstChild("BossCutsceneEvent")
+        if not BossCutsceneRemote then
+            local success, remote = pcall(function() return ReplicatedStorage:WaitForChild("BossCutsceneEvent", 5) end)
+            if success and remote then BossCutsceneRemote = remote end
+        end
+    end
+    return BossCutsceneRemote
+end
+
+local function GetDamageValue()
+    local dmg = Flags.DamageValue
+    if Flags.HitMode == "Heal" then return -dmg end
+    return dmg
+end
+
+local function GetBiomeName(index) return BiomeInfo[index] or ("Biome " .. tostring(index)) end
+
+local function SummonBiome(biomeIndex)
+    local remote = GetSummonBiomeRemote()
+    if remote then
+        local biomeToSend = tonumber(biomeIndex)
+        if biomeToSend == nil then
+            warn("[pimple] Invalid biome index:", biomeIndex)
+            return false
+        end
+        
+        local success, err = pcall(function() 
+            remote:FireServer(biomeToSend) 
+        end)
+        
+        if not success then
+            warn("[pimple] Failed to summon biome:", err)
+        end
+        return success
+    else
+        warn("[pimple] SummonBiome remote not found!")
+    end
+    return false
+end
+
+local function SetupBiomeListeners()
+    LocalPlayer.CharacterAdded:Connect(function()
+        task.wait(1)
+        if Flags.AutoBiomeLock then
+            SummonBiome(Flags.TargetBiome)
+        end
+    end)
+end
+
+local function DetectBossPresence()
+    for _, model in ipairs(workspace:GetChildren()) do
+        if model:IsA("Model") then
+            local humanoid = model:FindFirstChild("Humanoid")
+            local enemyMain = model:FindFirstChild("EnemyMain") or model:FindFirstChild("BossMain")
+            if humanoid and (enemyMain or IsSpecialBoss(model)) then
+                local modelName = model.Name:lower()
+                for _, bossName in ipairs(BossNames) do
+                    if string.find(modelName, bossName:lower()) then return true end
+                end
+                if humanoid.MaxHealth and humanoid.MaxHealth > 100000 then return true end
+            end
+        end
+    end
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        for _, gui in ipairs(playerGui:GetDescendants()) do
+            if gui:IsA("TextLabel") then
+                local text = gui.Text or ""
+                for _, bossName in ipairs(BossNames) do
+                    if string.find(text, bossName) then return true end
+                end
+                if string.match(text, "%[.+%]:") then return true end
+            end
+        end
+    end
+    return false
+end
+
+local function SkipBossCutscene()
+    local remote = GetBossCutsceneRemote()
+    if remote then
+        local success, err = pcall(function() remote:FireServer("Skip") end)
+        if success then IsInCutscene = false else warn("[pimple] Failed to skip cutscene:", err) end
+        return success
+    end
+    return false
+end
+
+local function DetectBossCutscene()
+    if not BossDetected then return false end
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return false end
+    for _, gui in ipairs(playerGui:GetDescendants()) do
+        if gui:IsA("TextLabel") or gui:IsA("TextButton") then
+            local textLower = (gui.Text or ""):lower()
+            if (string.find(textLower, "tap") and string.find(textLower, "skip")) or
+               (string.find(textLower, "skip") and gui.Visible and gui:IsA("TextButton")) then
+                return true
+            end
+        end
+    end
+    local cutsceneGui = playerGui:FindFirstChild("CutsceneGui") or playerGui:FindFirstChild("BossCutscene")
+        or playerGui:FindFirstChild("Cutscene") or playerGui:FindFirstChild("CutsceneFrame")
+    if cutsceneGui and cutsceneGui.Enabled ~= false then return true end
+    local inCutscene = LocalPlayer:GetAttribute("InCutscene") or LocalPlayer:GetAttribute("Cutscene")
+    if inCutscene == true then return true end
+    return false
+end
+
+local function SetupCutsceneListeners()
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    playerGui.ChildAdded:Connect(function(child)
+        if Flags.AutoSkipCutscene and BossDetected then
+            local childNameLower = child.Name:lower()
+            if string.find(childNameLower, "cutscene") or string.find(childNameLower, "boss") then
+                task.wait(0.2)
+                if DetectBossCutscene() then SkipBossCutscene() end
+            end
+        end
+    end)
+end
+
+local function IsUsableHealth(Health)
+    return type(Health) == "number" and Health > 0 and Health == Health and math.abs(Health) ~= math.huge
+end
+
+local function GetOreHealth(Ore)
+    local ok, propertyHealth = pcall(function() return Ore.Health end)
+    if ok and type(propertyHealth) == "number" then return propertyHealth end
+    local healthValue = Ore:FindFirstChild("Health")
+    if healthValue and type(healthValue.Value) == "number" then return healthValue.Value end
+    local attributeHealth = Ore:GetAttribute("Health")
+    if type(attributeHealth) == "number" then return attributeHealth end
+    return nil
+end
+
+local function GetWeapon()
+    local currentTime = tick()
+    if CachedWeapon and (currentTime - LastWeaponCheck) < CACHE_DURATION and CachedWeapon.Parent == LocalPlayer.Backpack then return CachedWeapon end
+    LastWeaponCheck = currentTime
+    CachedWeapon = nil
+    for _, child in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        if child:FindFirstChild("SwordControl") and child:FindFirstChild("RemoteFunction") then
+            CachedWeapon = child
+            return CachedWeapon
+        end
+    end
+    return nil
+end
+
+local function GetArmour()
+    local currentTime = tick()
+    if CachedArmour and (currentTime - LastArmourCheck) < CACHE_DURATION and CachedArmour.Parent == LocalPlayer.Backpack then return CachedArmour end
+    LastArmourCheck = currentTime
+    CachedArmour = nil
+    for _, child in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        if string.find(child.Name, "Armour") and child:FindFirstChild("RemoteFunction") then
+            CachedArmour = child
+            return CachedArmour
+        end
+    end
+    return nil
+end
+
+local function GetEquippedTool()
+    local character = LocalPlayer.Character
+    if not character then return nil end
+    for _, child in ipairs(character:GetChildren()) do
+        if child:IsA("Tool") then
+            return child
+        end
+    end
+    return nil
+end
+
+local function GetEquippedMeteorWeapon()
+    local charactersFolder = workspace:FindFirstChild("Characters")
+    if not charactersFolder then return nil, nil end
+    local playerCharFolder = charactersFolder:FindFirstChild(LocalPlayer.Name)
+    if not playerCharFolder then return nil, nil end
+    for _, item in ipairs(playerCharFolder:GetChildren()) do
+        local remoteFunc = item:FindFirstChild("RemoteFunction")
+        if remoteFunc then
+            return item, remoteFunc
+        end
+    end
+    return nil, nil
+end
+
+local function GetAllEquippedWeapons()
+    local weapons = {}
+    local charactersFolder = workspace:FindFirstChild("Characters")
+    if not charactersFolder then return weapons end
+    local playerCharFolder = charactersFolder:FindFirstChild(LocalPlayer.Name)
+    if not playerCharFolder then return weapons end
+    
+    for _, item in ipairs(playerCharFolder:GetChildren()) do
+        local remote = nil
+        local remoteType = nil
+        
+        local remoteFunc = item:FindFirstChild("RemoteFunction")
+        if remoteFunc then
+            remote = remoteFunc
+            remoteType = "RemoteFunction"
+        end
+        
+        local remoteEvent = item:FindFirstChild("RemoteEvent")
+        if remoteEvent then
+            remote = remoteEvent
+            remoteType = "RemoteEvent"
+        end
+        
+        for _, child in ipairs(item:GetChildren()) do
+            if string.find(child.Name, "Remote") and (child:IsA("RemoteEvent") or child:IsA("RemoteFunction")) then
+                remote = child
+                remoteType = child.ClassName
+                break
+            end
+        end
+        
+        if remote then
+            table.insert(weapons, {
+                weapon = item,
+                remote = remote,
+                remoteType = remoteType,
+                name = item.Name
+            })
+        end
+    end
+    
+    return weapons
+end
+
+local function SimulateClick()
+    if IsMouseOverGui() then
+        return false
+    end
+    
+    local success = pcall(function()
+        if VirtualInputManager then
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+            task.wait()
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+        end
+    end)
+    return success
+end
+
+local function SimulateKeyPress(keyCode)
+    local success = pcall(function()
+        if VirtualInputManager then
+            VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+            task.wait()
+            VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+        end
+    end)
+    return success
+end
+
+local function ActivateEquippedTool()
+    local tool = GetEquippedTool()
+    if tool then
+        pcall(function()
+            tool:Activate()
+        end)
+        return true
+    end
+    return false
+end
+
+local function FireRemote(weaponData, abilityName)
+    if not weaponData or not weaponData.remote then return false end
+    
+    local args = { abilityName }
+    local success = false
+    
+    if weaponData.remoteType == "RemoteEvent" or weaponData.remote:IsA("RemoteEvent") then
+        success = pcall(function()
+            weaponData.remote:FireServer(unpack(args))
+        end)
+    else
+        success = pcall(function()
+            weaponData.remote:InvokeServer(unpack(args))
+        end)
+    end
+    
+    return success
+end
+
+local function FireM1(weaponData)
+    return FireRemote(weaponData, "M1")
+end
+
+local function PerformSwingAttack()
+    local weapons = GetAllEquippedWeapons()
+    local attackedAny = false
+    
+    for _, weaponData in ipairs(weapons) do
+        FireM1(weaponData)
+        attackedAny = true
+    end
+    
+    if not IsMouseOverGui() then
+        ActivateEquippedTool()
+        SimulateClick()
+    end
+    
+    return attackedAny
+end
+
+local function PerformAbilities()
+    local usedAny = false
+    
+    if Flags.AbilityQ then
+        SimulateKeyPress(Enum.KeyCode.Q)
+        usedAny = true
+    end
+    
+    if Flags.AbilityE then
+        SimulateKeyPress(Enum.KeyCode.E)
+        usedAny = true
+    end
+    
+    if Flags.AbilityR then
+        SimulateKeyPress(Enum.KeyCode.R)
+        usedAny = true
+    end
+    
+    return usedAny
+end
+
+local function GetNearestEnemy()
+    local character = LocalPlayer.Character
+    if not character then return nil end
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return nil end
+    local nearestEnemy, nearestDist = nil, math.huge
+    
+    for _, model in ipairs(workspace:GetChildren()) do
+        if model:IsA("Model") and IsEnemy(model) then
+            local humanoid = model:FindFirstChild("Humanoid")
+            local head = model:FindFirstChild("Head")
+            
+            if humanoid and head and IsUsableHealth(humanoid.Health) then
+                local dist = (head.Position - rootPart.Position).Magnitude
+                if dist < nearestDist then
+                    nearestDist = dist
+                    nearestEnemy = model
+                end
+            end
+        end
+    end
+    
+    return nearestEnemy
+end
+
+local function GetAllEnemies()
+    local enemies = {}
+    
+    for _, model in ipairs(workspace:GetChildren()) do
+        if model:IsA("Model") and IsEnemy(model) then
+            local humanoid = model:FindFirstChild("Humanoid")
+            if humanoid and IsUsableHealth(humanoid.Health) then
+                table.insert(enemies, model)
+            end
+        end
+        
+        if model:IsA("Folder") or model:IsA("Model") then
+            for _, child in ipairs(model:GetChildren()) do
+                if child:IsA("Model") and IsEnemy(child) then
+                    local humanoid = child:FindFirstChild("Humanoid")
+                    if humanoid and IsUsableHealth(humanoid.Health) then
+                        table.insert(enemies, child)
+                    end
+                end
+            end
+        end
+    end
+    
+    return enemies
+end
+
+local function FireMeteor(remoteFunc, target)
+    local head = target:FindFirstChild("Head")
+    if not head then return false end
+    local damage = Flags.DamageValue
+    if damage == math.huge then damage = 999999999 end
+    local args = { "meteor", { damage, head } }
+    local success = pcall(function() remoteFunc:InvokeServer(unpack(args)) end)
+    return success
+end
+
+-- Helper function to update toggle UI state
+local function UpdateToggleState(toggle, value)
+    if not toggle then return end
+    
+    pcall(function()
+        -- Try multiple common method names used by UI libraries
+        if toggle.Set then
+            toggle:Set(value)
+        elseif toggle.SetValue then
+            toggle:SetValue(value)
+        elseif toggle.SetState then
+            toggle:SetState(value)
+        elseif toggle.UpdateValue then
+            toggle:UpdateValue(value)
+        elseif toggle.Value ~= nil then
+            toggle.Value = value
+        elseif toggle.State ~= nil then
+            toggle.State = value
+        end
+        
+        -- Some libraries need an explicit refresh/update call
+        if toggle.Refresh then
+            toggle:Refresh()
+        elseif toggle.Update then
+            toggle:Update()
+        end
+    end)
+end
+
+-- Toggle functions that sync with UI
+local function ToggleAutoSwing()
+    Flags.AutoSwing = not Flags.AutoSwing
+    UpdateToggleState(AutoSwingToggle, Flags.AutoSwing)
+    print("[pimple] Auto Swing", Flags.AutoSwing and "ENABLED" or "DISABLED")
+end
+
+local function ToggleAutoAbilities()
+    Flags.AutoAbilities = not Flags.AutoAbilities
+    UpdateToggleState(AutoAbilitiesToggle, Flags.AutoAbilities)
+    print("[pimple] Auto Abilities", Flags.AutoAbilities and "ENABLED" or "DISABLED")
+end
+
+LoadConfig()
+
+local Compkiller = loadstring(game:HttpGet("https://raw.githubusercontent.com/4lpaca-pin/CompKiller/refs/heads/main/src/source.luau"))()
+
+local Notifier = Compkiller.newNotify()
+
+local ConfigManager = Compkiller:ConfigManager({
+    Directory = "Pimple-UI",
+    Config = "Pimple-Configs"
+})
+
+Compkiller.Colors.Highlight = Color3.fromRGB(220, 60, 60)
+Compkiller.Colors.Toggle = Color3.fromRGB(220, 60, 60)
+
+local Window = Compkiller.new({
+    Name = "PIMPLE v4.9 - Craftwars Redux",
+    Keybind = "LeftAlt",
+    Logo = AVATAR_ICON,
+    TextSize = 18,
+    Font = Enum.Font.GothamBold,
+})
+
+Notifier.new({
+    Title = "Pimple Loaded",
+    Content = "Press Left Alt to toggle UI\nPress X for Auto Swing\nPress T for Auto Abilities",
+    Duration = 5,
+    Icon = AVATAR_ICON,
+})
+
+local Watermark = Window:Watermark()
+Watermark:AddText({
+    Icon = "user",
+    Text = LocalPlayer.DisplayName,
+})
+Watermark:AddText({
+    Icon = "server",
+    Text = "v4.9",
+})
+
+Window:DrawCategory({
+    Name = "COMBAT"
+})
+
+local MainTab = Window:DrawTab({
+    Name = "Main",
+    Icon = "sword",
+    EnableScrolling = true
+})
+
+local KillAuraSection = MainTab:DrawSection({
+    Name = "Kill Aura",
+    Position = "left"
+})
+
+KillAuraSection:AddToggle({
+    Name = "Enabled",
+    Flag = "Enabled",
+    Default = Flags.Enabled,
+    Callback = function(v)
+        Flags.Enabled = v
+    end,
+})
+
+AutoSwingToggle = KillAuraSection:AddToggle({
+    Name = "Auto Swing [X]",
+    Flag = "AutoSwing",
+    Default = Flags.AutoSwing,
+    Callback = function(v)
+        Flags.AutoSwing = v
+    end,
+})
+
+KillAuraSection:AddToggle({
+    Name = "Mobs",
+    Flag = "AutoEnemies",
+    Default = Flags.AutoEnemies,
+    Callback = function(v)
+        Flags.AutoEnemies = v
+    end,
+})
+
+KillAuraSection:AddToggle({
+    Name = "Mines",
+    Flag = "AutoMines",
+    Default = Flags.AutoMines,
+    Callback = function(v)
+        Flags.AutoMines = v
+    end,
+})
+
+KillAuraSection:AddSlider({
+    Name = "Swing Speed",
+    Min = 0.01,
+    Max = 1,
+    Default = Flags.SwingCooldown,
+    Round = 3,
+    Flag = "SwingCooldown",
+    Callback = function(v)
+        Flags.SwingCooldown = v
+    end,
+})
+
+KillAuraSection:AddDropdown({
+    Name = "Mode",
+    Default = Flags.HitMode,
+    Flag = "HitMode",
+    Values = {"Damage", "Heal"},
+    Callback = function(v)
+        Flags.HitMode = v
+    end,
+})
+
+KillAuraSection:AddTextBox({
+    Name = "Damage",
+    Placeholder = "inf, 500m, 1k...",
+    Default = Flags.DamageInput,
+    Callback = function(v)
+        Flags.DamageInput = v
+        Flags.DamageValue = ParseDamage(v)
+        local display = Flags.DamageValue == math.huge and "Infinite" or tostring(Flags.DamageValue)
+        print("[pimple] Damage set to:", display)
+    end,
+})
+
+KillAuraSection:AddSlider({
+    Name = "Cooldown",
+    Min = 0.1,
+    Max = 2,
+    Default = Flags.AttackCooldown,
+    Round = 2,
+    Flag = "AttackCooldown",
+    Callback = function(v)
+        Flags.AttackCooldown = v
+    end,
+})
+
+local PlayerSection = MainTab:DrawSection({
+    Name = "Player",
+    Position = "right"
+})
+
+PlayerSection:AddSlider({
+    Name = "Walk Speed",
+    Min = 16,
+    Max = 100,
+    Default = Flags.WalkSpeed,
+    Round = 0,
+    Flag = "WalkSpeed",
+    Callback = function(v)
+        Flags.WalkSpeed = v
+        UpdateWalkSpeed(v)
+        print("[pimple] Walk Speed set to:", v)
+    end,
+})
+
+PlayerSection:AddButton({
+    Name = "Reset Speed",
+    Callback = function()
+        Flags.WalkSpeed = 16
+        UpdateWalkSpeed(16)
+        print("[pimple] Walk Speed reset to 16")
+    end,
+})
+
+local MineSection = MainTab:DrawSection({
+    Name = "Mine Targets",
+    Position = "right"
+})
+
+MineSection:AddDropdown({
+    Name = "Mines",
+    Default = {"Mine", "Mine2", "Mine3"},
+    Multi = true,
+    Flag = "MineTargets",
+    Values = {"Mine", "Mine2", "Mine3"},
+    Callback = function(v)
+        local targets = {}
+        for _, mine in ipairs(v) do
+            targets[mine] = true
+        end
+        Flags.MineTargets = targets
+    end,
+})
+
+task.spawn(function()
+    task.wait(0.1)
+    UpdateWalkSpeed(Flags.WalkSpeed)
+end)
+
+Window:DrawCategory({
+    Name = "ABILITIES"
+})
+
+local AbilitiesTab = Window:DrawTab({
+    Name = "Abilities",
+    Icon = "target",
+    EnableScrolling = true
+})
+
+local AbilitySection = AbilitiesTab:DrawSection({
+    Name = "Auto Abilities",
+    Position = "left"
+})
+
+AutoAbilitiesToggle = AbilitySection:AddToggle({
+    Name = "Auto Abilities [T]",
+    Flag = "AutoAbilities",
+    Default = Flags.AutoAbilities,
+    Callback = function(v)
+        Flags.AutoAbilities = v
+    end,
+})
+
+AbilitySection:AddToggle({
+    Name = "Use Q Ability",
+    Flag = "AbilityQ",
+    Default = Flags.AbilityQ,
+    Callback = function(v)
+        Flags.AbilityQ = v
+    end,
+})
+
+AbilitySection:AddToggle({
+    Name = "Use E Ability",
+    Flag = "AbilityE",
+    Default = Flags.AbilityE,
+    Callback = function(v)
+        Flags.AbilityE = v
+    end,
+})
+
+AbilitySection:AddToggle({
+    Name = "Use R Ability",
+    Flag = "AbilityR",
+    Default = Flags.AbilityR,
+    Callback = function(v)
+        Flags.AbilityR = v
+    end,
+})
+
+AbilitySection:AddSlider({
+    Name = "Ability Cooldown",
+    Min = 0.1,
+    Max = 5,
+    Default = Flags.AbilityCooldown,
+    Round = 2,
+    Flag = "AbilityCooldown",
+    Callback = function(v)
+        Flags.AbilityCooldown = v
+    end,
+})
+
+local MeteorSection = AbilitiesTab:DrawSection({
+    Name = "Meteor",
+    Position = "right"
+})
+
+MeteorSection:AddToggle({
+    Name = "Auto Meteor",
+    Flag = "AutoMeteor",
+    Default = Flags.AutoMeteor,
+    Callback = function(v)
+        Flags.AutoMeteor = v
+    end,
+})
+
+MeteorSection:AddSlider({
+    Name = "Meteor Delay",
+    Min = 0,
+    Max = 1,
+    Default = Flags.MeteorCooldown,
+    Round = 3,
+    Flag = "MeteorCooldown",
+    Callback = function(v)
+        Flags.MeteorCooldown = v
+    end,
+})
+
+Window:DrawCategory({
+    Name = "BIOME"
+})
+
+local BiomeTab = Window:DrawTab({
+    Name = "Biome",
+    Icon = "map",
+    EnableScrolling = true
+})
+
+local BiomeSection = BiomeTab:DrawSection({
+    Name = "Biome Control",
+    Position = "left"
+})
+
+BiomeSection:AddToggle({
+    Name = "Auto Lock",
+    Flag = "AutoBiomeLock",
+    Default = Flags.AutoBiomeLock,
+    Callback = function(v)
+        Flags.AutoBiomeLock = v
+    end,
+})
+
+BiomeSection:AddSlider({
+    Name = "Target Biome",
+    Min = 0,
+    Max = TOTAL_BIOMES - 1,
+    Default = Flags.TargetBiome,
+    Round = 0,
+    Flag = "TargetBiome",
+    Callback = function(v)
+        Flags.TargetBiome = math.floor(v)
+        print("[pimple] Target:", Flags.TargetBiome, "-", GetBiomeName(Flags.TargetBiome))
+    end,
+})
+
+BiomeSection:AddSlider({
+    Name = "Check Interval",
+    Min = 0.5,
+    Max = 5,
+    Default = Flags.BiomeCheckInterval,
+    Round = 1,
+    Flag = "BiomeCheckInterval",
+    Callback = function(v)
+        Flags.BiomeCheckInterval = v
+    end,
+})
+
+BiomeSection:AddButton({
+    Name = "Go To Biome",
+    Callback = function()
+        SummonBiome(Flags.TargetBiome)
+        print("[pimple] Going to Biome", Flags.TargetBiome, "-", GetBiomeName(Flags.TargetBiome))
+    end,
+})
+
+BiomeSection:AddButton({
+    Name = "List All Biomes",
+    Callback = function()
+        print("========== BIOME LIST ==========")
+        for i = 0, 40 do print("Biome " .. i .. ": " .. GetBiomeName(i)) end
+        print("================================")
+    end,
+})
+
+local CutsceneSection = BiomeTab:DrawSection({
+    Name = "Boss Cutscenes",
+    Position = "right"
+})
+
+CutsceneSection:AddToggle({
+    Name = "Auto Skip",
+    Flag = "AutoSkipCutscene",
+    Default = Flags.AutoSkipCutscene,
+    Callback = function(v)
+        Flags.AutoSkipCutscene = v
+    end,
+})
+
+CutsceneSection:AddSlider({
+    Name = "Check Speed",
+    Min = 0.3,
+    Max = 2,
+    Default = Flags.CutsceneCheckInterval,
+    Round = 1,
+    Flag = "CutsceneCheckInterval",
+    Callback = function(v)
+        Flags.CutsceneCheckInterval = v
+    end,
+})
+
+CutsceneSection:AddButton({
+    Name = "Skip Now",
+    Callback = function()
+        SkipBossCutscene()
+    end,
+})
+
+Window:DrawCategory({
+    Name = "MISC"
+})
+
+local MiscTab = Window:DrawTab({
+    Name = "Troll",
+    Icon = "skull",
+    EnableScrolling = true
+})
+
+local TrollSection = MiscTab:DrawSection({
+    Name = "Troll Actions",
+    Position = "left"
+})
+
+TrollSection:AddButton({
+    Name = "God All",
+    Callback = function()
+        local armour = GetArmour()
+        if not armour then warn("[pimple] No armour!") return end
+        local remoteFunc = armour:FindFirstChild("RemoteFunction")
+        if not remoteFunc then return end
+        for _, player in ipairs(PlayersService:GetPlayers()) do
+            task.wait()
+            local character = player.Character
+            local humanoid = character and character:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health > 0 then pcall(function() remoteFunc:InvokeServer("protect", { character, humanoid, 6000000 }) end) end
+        end
+        print("[pimple] God All executed!")
+        Notifier.new({
+            Title = "God All",
+            Content = "Gave all players 6M HP shield!",
+            Duration = 3,
+            Icon = AVATAR_ICON,
+        })
+    end,
+})
+
+TrollSection:AddButton({
+    Name = "Kill All",
+    Callback = function()
+        local armour = GetArmour()
+        if not armour then warn("[pimple] No armour!") return end
+        local remoteFunc = armour:FindFirstChild("RemoteFunction")
+        if not remoteFunc then return end
+        for _, player in ipairs(PlayersService:GetPlayers()) do
+            if player ~= LocalPlayer then
+                task.wait()
+                local character = player.Character
+                local humanoid = character and character:FindFirstChild("Humanoid")
+                if humanoid and humanoid.Health > 0 then pcall(function() remoteFunc:InvokeServer("protect", { character, humanoid, -math.huge }) end) end
+            end
+        end
+        print("[pimple] Kill All executed!")
+        Notifier.new({
+            Title = "Kill All",
+            Content = "Killed all other players!",
+            Duration = 3,
+            Icon = AVATAR_ICON,
+        })
+    end,
+})
+
+TrollSection:AddButton({
+    Name = "Set Enemies 1 HP",
+    Callback = function()
+        local weapon = GetWeapon()
+        if not weapon then warn("[pimple] No weapon!") return end
+        local remoteFunc = weapon:FindFirstChild("RemoteFunction")
+        if not remoteFunc then return end
+        local count = 0
+        local enemies = GetAllEnemies()
+        for _, model in ipairs(enemies) do
+            local humanoid = model:FindFirstChild("Humanoid")
+            if humanoid then
+                local health = humanoid.Health
+                if type(health) == "number" and health == health and math.abs(health) ~= math.huge and health > 1 then
+                    pcall(function() remoteFunc:InvokeServer("hit", { humanoid, health - 1 }) end)
+                    count = count + 1
+                end
+            end
+        end
+        print("[pimple] Set", count, "enemies to 1 HP!")
+        Notifier.new({
+            Title = "Enemies 1 HP",
+            Content = "Set " .. count .. " enemies to 1 HP!",
+            Duration = 3,
+            Icon = AVATAR_ICON,
+        })
+    end,
+})
+
+local ConfigSection = MiscTab:DrawSection({
+    Name = "Config",
+    Position = "right"
+})
+
+ConfigSection:AddToggle({
+    Name = "Auto Save",
+    Flag = "AutoSaveEnabled",
+    Default = Flags.AutoSaveEnabled,
+    Callback = function(v)
+        Flags.AutoSaveEnabled = v
+    end,
+})
+
+ConfigSection:AddButton({
+    Name = "Save Config",
+    Callback = function()
+        if SaveConfig() then
+            print("[pimple] Config saved manually!")
+            Notifier.new({
+                Title = "Config Saved",
+                Content = "Settings saved successfully!",
+                Duration = 3,
+                Icon = AVATAR_ICON,
+            })
+        end
+    end,
+})
+
+ConfigSection:AddButton({
+    Name = "Load Config",
+    Callback = function()
+        if LoadConfig() then
+            UpdateWalkSpeed(Flags.WalkSpeed)
+            print("[pimple] Config loaded!")
+            Notifier.new({
+                Title = "Config Loaded",
+                Content = "Settings loaded! Restart for full UI refresh.",
+                Duration = 3,
+                Icon = AVATAR_ICON,
+            })
+        end
+    end,
+})
+
+ConfigSection:AddParagraph({
+    Title = "Info",
+    Content = "Auto-saves every 30 seconds\nConfig file: " .. CONFIG_FILE
+})
+
+-- Debug: Print available toggle methods (remove this after finding the right method)
+task.spawn(function()
+    task.wait(1)
+    if AutoSwingToggle then
+        print("[DEBUG] AutoSwingToggle available methods/properties:")
+        for key, value in pairs(AutoSwingToggle) do
+            print("  ", key, "=", type(value))
+        end
+    end
+    if AutoAbilitiesToggle then
+        print("[DEBUG] AutoAbilitiesToggle available methods/properties:")
+        for key, value in pairs(AutoAbilitiesToggle) do
+            print("  ", key, "=", type(value))
+        end
+    end
+end)
+
+-- Keybind input handler
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed or IsTyping() then return end
+    
+    if input.KeyCode == Flags.SwingKeybind then
+        ToggleAutoSwing()
+    elseif input.KeyCode == Flags.AbilityKeybind then
+        ToggleAutoAbilities()
+    end
+end)
+
+RunService.RenderStepped:Connect(function(DeltaTime)
+    CooldownTimer = CooldownTimer + DeltaTime
+    BiomeCheckTimer = BiomeCheckTimer + DeltaTime
+    CutsceneCheckTimer = CutsceneCheckTimer + DeltaTime
+    MeteorTimer = MeteorTimer + DeltaTime
+    SwingTimer = SwingTimer + DeltaTime
+    AbilityTimer = AbilityTimer + DeltaTime
+    LastAutoSave = LastAutoSave + DeltaTime
+    
+    if Flags.AutoSaveEnabled and LastAutoSave >= AutoSaveInterval then
+        LastAutoSave = 0
+        task.spawn(function()
+            SaveConfig()
+        end)
+    end
+    
+    if CutsceneCheckTimer >= 1 then BossDetected = DetectBossPresence() end
+    
+    if Flags.AutoSwing and SwingTimer >= Flags.SwingCooldown then
+        SwingTimer = 0
+        PerformSwingAttack()
+    end
+    
+    if Flags.AutoAbilities and AbilityTimer >= Flags.AbilityCooldown then
+        AbilityTimer = 0
+        PerformAbilities()
+    end
+    
+    if Flags.AutoMeteor and MeteorTimer >= Flags.MeteorCooldown then
+        MeteorTimer = 0
+        local weapon, remoteFunc = GetEquippedMeteorWeapon()
+        if weapon and remoteFunc then
+            local enemy = GetNearestEnemy()
+            if enemy then FireMeteor(remoteFunc, enemy) end
+        end
+    end
+    
+    if Flags.AutoSkipCutscene and BossDetected and CutsceneCheckTimer >= Flags.CutsceneCheckInterval then
+        CutsceneCheckTimer = 0
+        local inCutscene = DetectBossCutscene()
+        if inCutscene and not IsInCutscene then
+            IsInCutscene = true
+            task.spawn(function()
+                task.wait(0.1)
+                SkipBossCutscene()
+                task.wait(0.2)
+                if DetectBossCutscene() then SkipBossCutscene() end
+            end)
+        elseif not inCutscene then IsInCutscene = false end
+    end
+    
+    if Flags.AutoBiomeLock and BiomeCheckTimer >= Flags.BiomeCheckInterval then
+        BiomeCheckTimer = 0
+        SummonBiome(Flags.TargetBiome)
+    end
+    
+    if not Flags.Enabled then return end
+    local cooldown = tonumber(Flags.AttackCooldown) or 0.5
+    if CooldownTimer < cooldown then return end
+    local weapon = GetWeapon()
+    if not weapon then return end
+    local remoteFunc = weapon:FindFirstChild("RemoteFunction")
+    if not remoteFunc then return end
+    local hitValue = GetDamageValue()
+    
+    if Flags.AutoEnemies then
+        local enemies = GetAllEnemies()
+        for _, model in ipairs(enemies) do
+            local humanoid = model:FindFirstChild("Humanoid")
+            if humanoid and IsUsableHealth(humanoid.Health) then
+                pcall(function() remoteFunc:InvokeServer("hit", { humanoid, hitValue }) end)
+            end
+        end
+    end
+    
+    if Flags.AutoMines and type(Flags.MineTargets) == "table" then
+        for mineName, isSelected in pairs(Flags.MineTargets) do
+            if isSelected and type(mineName) == "string" then
+                local mineFolder = workspace:FindFirstChild(mineName)
+                if mineFolder then
+                    for _, child in ipairs(mineFolder:GetChildren()) do
+                        local ore = child:FindFirstChild("Ore")
+                        if ore then
+                            local oreHealth = GetOreHealth(ore)
+                            if oreHealth == nil or IsUsableHealth(oreHealth) then
+                                pcall(function() remoteFunc:InvokeServer("hit", { ore, hitValue }) end)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    CooldownTimer = 0
+end)
+
+game:BindToClose(function()
+    if Flags.AutoSaveEnabled then
+        SaveConfig()
+    end
+end)
+
+SetupBiomeListeners()
+SetupCutsceneListeners()
+print("[pimple] v4.9 Loaded!")
+print("[pimple] Press Left Alt to toggle UI")
+print("[pimple] Press X to toggle Auto Swing")
+print("[pimple] Press T to toggle Auto Abilities")
+print("[pimple] Config system: Auto-saves every 30 seconds")
+print("[pimple] Config file:", CONFIG_FILE)
