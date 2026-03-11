@@ -15,6 +15,12 @@ local AutoSaveInterval = 30
 local LastAutoSave = 0
 local AVATAR_ICON = "rbxthumb://type=AvatarHeadShot&id=583572860&w=420&h=420"
 
+-- Username Spoof Variables
+local NameSpoofEnabled = false
+local SpoofName = "pimple"
+local OriginalNames = {} -- Store original names for restoration
+local NameSpoofConnection = nil
+
 local BiomeInfo = {
     [0] = "Spawn", [1] = "Rex, ruler of the universe", [2] = "Night", [3] = "Mortus",
     [4] = "Elemental War", [5] = "Zombie army", [6] = "Pirate army", [7] = "Underworld",
@@ -69,6 +75,8 @@ local Flags = {
     AbilityE = false,
     AbilityR = false,
     AbilityCooldown = 0.5,
+    NameSpoofEnabled = false,
+    SpoofName = "pimple",
 }
 
 local SaveableKeys = {
@@ -76,7 +84,8 @@ local SaveableKeys = {
     "HitMode", "DamageInput", "MineTargets", "AutoBiomeLock", "TargetBiome",
     "BiomeCheckInterval", "AutoSkipCutscene", "CutsceneCheckInterval",
     "AutoMeteor", "MeteorCooldown", "SwingCooldown", "WalkSpeed", "AutoSaveEnabled",
-    "AutoAbilities", "AbilityQ", "AbilityE", "AbilityR", "AbilityCooldown"
+    "AutoAbilities", "AbilityQ", "AbilityE", "AbilityR", "AbilityCooldown",
+    "NameSpoofEnabled", "SpoofName"
 }
 
 local MineOptions = { "Mine", "Mine2", "Mine3" }
@@ -169,6 +178,10 @@ local function LoadConfig()
     if Flags.DamageInput then
         Flags.DamageValue = ParseDamage(Flags.DamageInput)
     end
+    
+    -- Load spoof settings
+    NameSpoofEnabled = Flags.NameSpoofEnabled
+    SpoofName = Flags.SpoofName or "pimple"
     
     print("[pimple] Config loaded successfully!")
     print("[pimple] Last saved:", os.date("%Y-%m-%d %H:%M:%S", result.timestamp or 0))
@@ -652,12 +665,217 @@ local function FireMeteor(remoteFunc, target)
     return success
 end
 
+-- ==================== USERNAME SPOOF FUNCTIONS ====================
+
+-- Get all player usernames to search for
+local function GetAllPlayerNames()
+    local names = {}
+    for _, player in ipairs(PlayersService:GetPlayers()) do
+        table.insert(names, player.Name)
+        table.insert(names, player.DisplayName)
+    end
+    return names
+end
+
+-- Check if a TextLabel likely contains a player name
+local function IsPlayerNameLabel(textLabel, playerNames)
+    if not textLabel or not textLabel:IsA("TextLabel") then return false end
+    local text = textLabel.Text
+    if not text or text == "" then return false end
+    
+    for _, name in ipairs(playerNames) do
+        if text == name or string.find(text, "^" .. name .. "$") then
+            return true, name
+        end
+    end
+    return false, nil
+end
+
+-- Find and spoof names in character BillboardGuis
+local function SpoofCharacterNames()
+    if not NameSpoofEnabled then return end
+    
+    local playerNames = GetAllPlayerNames()
+    
+    for _, player in ipairs(PlayersService:GetPlayers()) do
+        local character = player.Character
+        if character then
+            local head = character:FindFirstChild("Head")
+            if head then
+                -- Look for BillboardGui on the head (game's name display)
+                for _, child in ipairs(head:GetChildren()) do
+                    if child:IsA("BillboardGui") and child.Name ~= "PimpleNameSpoof" then
+                        for _, guiChild in ipairs(child:GetDescendants()) do
+                            if guiChild:IsA("TextLabel") then
+                                local isName, originalName = IsPlayerNameLabel(guiChild, playerNames)
+                                if isName then
+                                    -- Store original if not stored
+                                    if not OriginalNames[guiChild] then
+                                        OriginalNames[guiChild] = guiChild.Text
+                                    end
+                                    guiChild.Text = SpoofName
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            
+            -- Also check HumanoidRootPart for billboards
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, child in ipairs(hrp:GetChildren()) do
+                    if child:IsA("BillboardGui") then
+                        for _, guiChild in ipairs(child:GetDescendants()) do
+                            if guiChild:IsA("TextLabel") then
+                                local isName, originalName = IsPlayerNameLabel(guiChild, playerNames)
+                                if isName then
+                                    if not OriginalNames[guiChild] then
+                                        OriginalNames[guiChild] = guiChild.Text
+                                    end
+                                    guiChild.Text = SpoofName
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Find and spoof names in PlayerGui (overhead displays, leaderboard, etc.)
+local function SpoofGuiNames()
+    if not NameSpoofEnabled then return end
+    
+    local playerNames = GetAllPlayerNames()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return end
+    
+    for _, gui in ipairs(playerGui:GetDescendants()) do
+        if gui:IsA("TextLabel") then
+            local isName, originalName = IsPlayerNameLabel(gui, playerNames)
+            if isName then
+                if not OriginalNames[gui] then
+                    OriginalNames[gui] = gui.Text
+                end
+                gui.Text = SpoofName
+            end
+        end
+    end
+end
+
+-- Find and spoof names in workspace (3D billboards)
+local function SpoofWorkspaceNames()
+    if not NameSpoofEnabled then return end
+    
+    local playerNames = GetAllPlayerNames()
+    
+    -- Search through workspace for BillboardGuis
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BillboardGui") then
+            for _, child in ipairs(obj:GetDescendants()) do
+                if child:IsA("TextLabel") then
+                    local isName, originalName = IsPlayerNameLabel(child, playerNames)
+                    if isName then
+                        if not OriginalNames[child] then
+                            OriginalNames[child] = child.Text
+                        end
+                        child.Text = SpoofName
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Main spoof function that runs continuously
+local function RunNameSpoof()
+    SpoofCharacterNames()
+    SpoofGuiNames()
+    SpoofWorkspaceNames()
+end
+
+-- Restore all original names
+local function RestoreAllNames()
+    for textLabel, originalName in pairs(OriginalNames) do
+        pcall(function()
+            if textLabel and textLabel.Parent then
+                textLabel.Text = originalName
+            end
+        end)
+    end
+    OriginalNames = {}
+end
+
+-- Start the name spoof loop
+local function StartNameSpoof()
+    if NameSpoofConnection then
+        NameSpoofConnection:Disconnect()
+    end
+    
+    NameSpoofConnection = RunService.Heartbeat:Connect(function()
+        if NameSpoofEnabled then
+            RunNameSpoof()
+        end
+    end)
+end
+
+-- Stop the name spoof loop
+local function StopNameSpoof()
+    if NameSpoofConnection then
+        NameSpoofConnection:Disconnect()
+        NameSpoofConnection = nil
+    end
+    RestoreAllNames()
+end
+
+-- Setup listeners for new GUI elements
+local function SetupNameSpoofListeners()
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    
+    -- Watch for new GUIs being added
+    playerGui.DescendantAdded:Connect(function(descendant)
+        if NameSpoofEnabled and descendant:IsA("TextLabel") then
+            task.wait(0.1)
+            local playerNames = GetAllPlayerNames()
+            local isName, _ = IsPlayerNameLabel(descendant, playerNames)
+            if isName then
+                if not OriginalNames[descendant] then
+                    OriginalNames[descendant] = descendant.Text
+                end
+                descendant.Text = SpoofName
+            end
+        end
+    end)
+    
+    -- Watch for new characters
+    for _, player in ipairs(PlayersService:GetPlayers()) do
+        player.CharacterAdded:Connect(function(character)
+            if NameSpoofEnabled then
+                task.wait(0.5)
+                RunNameSpoof()
+            end
+        end)
+    end
+    
+    PlayersService.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function(character)
+            if NameSpoofEnabled then
+                task.wait(0.5)
+                RunNameSpoof()
+            end
+        end)
+    end)
+end
+
+-- ==================== END USERNAME SPOOF FUNCTIONS ====================
+
 -- Helper function to update toggle UI state
 local function UpdateToggleState(toggle, value)
     if not toggle then return end
     
     pcall(function()
-        -- Try multiple common method names used by UI libraries
         if toggle.Set then
             toggle:Set(value)
         elseif toggle.SetValue then
@@ -672,7 +890,6 @@ local function UpdateToggleState(toggle, value)
             toggle.State = value
         end
         
-        -- Some libraries need an explicit refresh/update call
         if toggle.Refresh then
             toggle:Refresh()
         elseif toggle.Update then
@@ -1163,6 +1380,74 @@ TrollSection:AddButton({
     end,
 })
 
+-- Name Spoof Section
+local NameSpoofSection = MiscTab:DrawSection({
+    Name = "Name Spoof",
+    Position = "left"
+})
+
+NameSpoofSection:AddToggle({
+    Name = "Enable Name Spoof",
+    Flag = "NameSpoofEnabled",
+    Default = Flags.NameSpoofEnabled,
+    Callback = function(v)
+        NameSpoofEnabled = v
+        Flags.NameSpoofEnabled = v
+        if v then
+            StartNameSpoof()
+            print("[pimple] Name Spoof ENABLED - All names now show '" .. SpoofName .. "'")
+            Notifier.new({
+                Title = "Name Spoof",
+                Content = "All players now appear as '" .. SpoofName .. "'!",
+                Duration = 3,
+                Icon = AVATAR_ICON,
+            })
+        else
+            StopNameSpoof()
+            print("[pimple] Name Spoof DISABLED - Names restored")
+            Notifier.new({
+                Title = "Name Spoof",
+                Content = "Player names restored to normal",
+                Duration = 3,
+                Icon = AVATAR_ICON,
+            })
+        end
+    end,
+})
+
+NameSpoofSection:AddTextBox({
+    Name = "Spoof Name",
+    Placeholder = "pimple",
+    Default = Flags.SpoofName or "pimple",
+    Callback = function(v)
+        SpoofName = v ~= "" and v or "pimple"
+        Flags.SpoofName = SpoofName
+        print("[pimple] Spoof name set to:", SpoofName)
+    end,
+})
+
+NameSpoofSection:AddButton({
+    Name = "Refresh Names",
+    Callback = function()
+        if NameSpoofEnabled then
+            RunNameSpoof()
+            Notifier.new({
+                Title = "Names Refreshed",
+                Content = "All player names updated to '" .. SpoofName .. "'",
+                Duration = 3,
+                Icon = AVATAR_ICON,
+            })
+        else
+            Notifier.new({
+                Title = "Name Spoof Disabled",
+                Content = "Enable Name Spoof first!",
+                Duration = 3,
+                Icon = AVATAR_ICON,
+            })
+        end
+    end,
+})
+
 local ConfigSection = MiscTab:DrawSection({
     Name = "Config",
     Position = "right"
@@ -1197,6 +1482,10 @@ ConfigSection:AddButton({
     Callback = function()
         if LoadConfig() then
             UpdateWalkSpeed(Flags.WalkSpeed)
+            if Flags.NameSpoofEnabled then
+                NameSpoofEnabled = true
+                StartNameSpoof()
+            end
             print("[pimple] Config loaded!")
             Notifier.new({
                 Title = "Config Loaded",
@@ -1212,23 +1501,6 @@ ConfigSection:AddParagraph({
     Title = "Info",
     Content = "Auto-saves every 30 seconds\nConfig file: " .. CONFIG_FILE
 })
-
--- Debug: Print available toggle methods (remove this after finding the right method)
-task.spawn(function()
-    task.wait(1)
-    if AutoSwingToggle then
-        print("[DEBUG] AutoSwingToggle available methods/properties:")
-        for key, value in pairs(AutoSwingToggle) do
-            print("  ", key, "=", type(value))
-        end
-    end
-    if AutoAbilitiesToggle then
-        print("[DEBUG] AutoAbilitiesToggle available methods/properties:")
-        for key, value in pairs(AutoAbilitiesToggle) do
-            print("  ", key, "=", type(value))
-        end
-    end
-end)
 
 -- Keybind input handler
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -1345,6 +1617,17 @@ end)
 
 SetupBiomeListeners()
 SetupCutsceneListeners()
+SetupNameSpoofListeners()
+
+-- Apply name spoof on load if it was enabled in config
+if Flags.NameSpoofEnabled then
+    NameSpoofEnabled = true
+    task.spawn(function()
+        task.wait(1)
+        StartNameSpoof()
+    end)
+end
+
 print("[pimple] v4.9 Loaded!")
 print("[pimple] Press Left Alt to toggle UI")
 print("[pimple] Press X to toggle Auto Swing")
